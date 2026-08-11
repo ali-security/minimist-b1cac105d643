@@ -1,0 +1,67 @@
+name: seal-pack
+
+# Build-and-pack only. minimist 1.2.5 predates GitHub Actions: the project's
+# entire test suite lives in .travis.yml and runs on Travis, so this workflow
+# deliberately runs no tests -- it exists purely to produce the release tarball.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  pack:
+    name: pack minimist-1.2.5.tgz
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 13 ships npm 6.14, the toolchain minimist 1.2.5 was published with
+      # (2020-03-12). npm 6's pack zeroes every file mtime, so the tarball is
+      # reproducible byte-for-byte.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '13'
+
+      - name: Report toolchain
+        run: |
+          node --version
+          npm --version
+
+      - name: Stage a pack tree matching the published release
+        run: |
+          set -eux
+          rm -rf /tmp/packsrc
+          mkdir -p /tmp/packsrc
+          # npm excludes .git on its own but not .github, and .github never
+          # shipped in the published tarball, so keep both out of the pack tree.
+          tar -c --exclude=./.git --exclude=./.github -C "$GITHUB_WORKSPACE" . \
+            | tar -x -C /tmp/packsrc
+          # The published minimist-1.2.5.tgz contains .travis.yml verbatim, so
+          # the Node 0.8 registry fix this seal adds for Travis must not reach
+          # the tarball. Restore the upstream 116-byte file in the pack tree only.
+          printf '%s\n' \
+            'language: node_js' \
+            'node_js:' \
+            '  - "0.8"' \
+            '  - "0.10"' \
+            '  - "0.12"' \
+            '  - "iojs"' \
+            'before_install:' \
+            '  - npm install -g npm@~1.4.6' \
+            > /tmp/packsrc/.travis.yml
+          echo '27f9822261c828c0a4ec588f2bfe1b1fad0f07b9fcff06bbcbae5e23b1152b29  /tmp/packsrc/.travis.yml' \
+            | sha256sum -c -
+
+      - name: npm pack
+        run: |
+          set -eux
+          cd /tmp/packsrc
+          npm pack
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          cp /tmp/packsrc/minimist-1.2.5.tgz "$GITHUB_WORKSPACE/dist/minimist-1.2.5.tgz"
+          tar tzvf "$GITHUB_WORKSPACE/dist/minimist-1.2.5.tgz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: minimist-tarball
+          path: dist/minimist-1.2.5.tgz
+          if-no-files-found: error

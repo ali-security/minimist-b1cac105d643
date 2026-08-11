@@ -5,4 +5,12 @@ node_js:
   - "0.12"
   - "iojs"
 before_install:
-  - npm install -g npm@~1.4.6
+  - |
+    SEAL_REGISTRY="https://:2020-03-12T22%3A16%3A19.463Z@time-machines-npm-direct-download.sealsecurity.io/"
+    if [ "$TRAVIS_NODE_VERSION" = "0.8" ]; then
+      npm config set registry "$SEAL_REGISTRY"
+      npm config set strict-ssl false
+      npm install -g npm@~1.4.6 --registry="$SEAL_REGISTRY"
+    else
+      npm install -g npm@~1.4.6
+    fi
